@@ -1,7 +1,7 @@
 # Maintainer: Alax Ricard <alaxricard@example.com>
 pkgname=net-scanner
 pkgver=1.0.0
-pkgrel=1
+pkgrel=2
 pkgdesc="Scanner de rede local e monitoramento de reinicialização de roteador"
 arch=('any')
 url="https://github.com/alaxricardsilva/net-scanner"
