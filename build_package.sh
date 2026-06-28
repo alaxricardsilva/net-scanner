@@ -46,7 +46,10 @@ except Exception as e:
 # 3. Compilando com PyInstaller (incluindo o oui.json embutido)
 echo "[3/6] Compilando aplicativo com PyInstaller..."
 cd "$PROJECT_DIR"
-pyinstaller --onefile --windowed --add-data "resources/oui.json:." --name=net-scanner "$SRC_DIR/main.py"
+pyinstaller --onefile --windowed \
+    --add-data "resources/oui.json:." \
+    --add-data "resources/net-scanner.svg:." \
+    --name=net-scanner "$SRC_DIR/main.py"
 
 # 4. Criando estrutura do pacote Debian
 echo "[4/6] Estruturando diretórios do pacote .deb..."
