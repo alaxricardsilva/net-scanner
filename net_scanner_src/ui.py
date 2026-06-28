@@ -518,7 +518,7 @@ class NetScannerWindow(QMainWindow):
         self.btn_scan.setEnabled(False)
         self.lbl_scan_status.setText("Realizando varredura na rede...")
         
-        self.scan_thread = ScanThread(self.subnet_prefix)
+        self.scan_thread = ScanThread(self.subnet_prefix, self.local_ip)
         self.scan_thread.finished_signal.connect(self.display_devices)
         self.scan_thread.start()
 
