@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0.0
+Type=Application
+Name=NetScanner
+Comment=Varredura e monitor de rede local
+Exec=/usr/bin/net-scanner
+Icon=net-scanner
+Terminal=false
+Categories=Utility;Network;

@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+build_env/
+
+# PyInstaller
+build/
+dist/
+*.spec
+
+# Temp files
+*.deb
+control.tar.gz
+data.tar.xz
+debian-binary
+net-scanner_1.0.0_amd64/
