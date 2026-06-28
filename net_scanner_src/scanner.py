@@ -141,25 +141,9 @@ LOCAL_OUI_DB = {
 
 def load_oui_database():
     """Tenta carregar o banco de dados OUI completo da IEEE a partir de fontes locais ou remotas."""
-    # 1. Tenta carregar da pasta de configurações do usuário
-    if os.path.exists(OUI_FILE_PATH):
-        try:
-            with open(OUI_FILE_PATH, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
-
-    # 2. Tenta carregar do diretório do script / instalação
     import sys
-    sys_path = os.path.join(os.path.dirname(__file__), "oui.json")
-    if os.path.exists(sys_path):
-        try:
-            with open(sys_path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
-
-    # 3. Tenta carregar da pasta temporária do PyInstaller
+    
+    # 1. Tenta carregar da pasta temporária do PyInstaller (prioridade máxima no executável)
     if hasattr(sys, "_MEIPASS"):
         meipass_path = os.path.join(sys._MEIPASS, "oui.json")
         if os.path.exists(meipass_path):
@@ -168,6 +152,23 @@ def load_oui_database():
                     return json.load(f)
             except Exception:
                 pass
+            
+    # 2. Tenta carregar do diretório do script / instalação (ex: /usr/share/net-scanner/oui.json)
+    sys_path = os.path.join(os.path.dirname(__file__), "oui.json")
+    if os.path.exists(sys_path):
+        try:
+            with open(sys_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+
+    # 3. Tenta carregar da pasta de configurações do usuário
+    if os.path.exists(OUI_FILE_PATH):
+        try:
+            with open(OUI_FILE_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
             
     # 4. Se não existir localmente, tenta baixar a base oficial da IEEE
     try:
@@ -182,7 +183,7 @@ def load_oui_database():
             if "(base 16)" in line:
                 parts = line.split("(base 16)")
                 if len(parts) == 2:
-                    oui_prefix = parts[0].strip().lower()
+                    oui_prefix = parts[0].strip().replace(":", "").lower()
                     company = parts[1].strip()
                     oui_db[oui_prefix] = company
                     
@@ -243,8 +244,41 @@ def get_public_ip(ipv6=False):
     except Exception:
         return "Não disponível"
 
+def get_local_machine_ipv6():
+    """Obtém os endereços IPv6 (Link-Local e Global) ativos na própria máquina local."""
+    ips = {"link_local": "Não detectado", "global": "Não detectado"}
+    try:
+        out = subprocess.check_output(["ip", "-6", "addr", "show"], text=True)
+        for line in out.splitlines():
+            line = line.strip()
+            if line.startswith("inet6"):
+                parts = line.split()
+                if len(parts) >= 2:
+                    ip = parts[1].split("/")[0]
+                    if ip == "::1":
+                        continue
+                    if ip.lower().startswith("fe80"):
+                        ips["link_local"] = ip
+                    else:
+                        ips["global"] = ip
+    except Exception:
+        pass
+    return ips
+
 def get_local_ipv6(mac):
-    """Obtém os endereços IPv6 (Link-Local e Global/Público) associados ao MAC na rede local."""
+    """Obtém os endereços IPv6 (Link-Local e Global/Público) associados ao MAC."""
+    # 1. Verifica se o MAC pertence à própria máquina local
+    import uuid
+    try:
+        mac_num = uuid.getnode()
+        mac_hex = f"{mac_num:012x}"
+        local_mac = ":".join(mac_hex[i:i+2] for i in range(0, 12, 2))
+        if mac.lower() == local_mac.lower():
+            return get_local_machine_ipv6()
+    except Exception:
+        pass
+
+    # 2. Senão, consulta a tabela de vizinhos do kernel
     ipv6s = {"link_local": "Não detectado", "global": "Não detectado"}
     try:
         out = subprocess.check_output(["ip", "-6", "neighbor", "show"], text=True)
