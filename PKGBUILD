@@ -7,7 +7,7 @@ arch=('any')
 url="https://github.com/alaxricardsilva/net-scanner"
 license=('GPL')
 depends=('python' 'pyside6')
-source=('net-scanner.desktop' 'net-scanner.svg' 'src/main.py' 'src/ui.py' 'src/scanner.py' 'src/database.py')
+source=('net-scanner.desktop' 'net-scanner.svg' 'main.py::src/main.py' 'ui.py::src/ui.py' 'scanner.py::src/scanner.py' 'database.py::src/database.py')
 sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
 
 package() {
