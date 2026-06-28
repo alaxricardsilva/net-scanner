@@ -89,20 +89,109 @@ def get_arp_table():
         print(f"Erro ao ler /proc/net/arp: {e}")
     return devices
 
-def get_mac_vendor(mac):
-    """Tenta obter a fabricante do dispositivo a partir do MAC OUI usando um serviço online leve."""
+# Cache local de fabricantes para evitar consultas excessivas à API
+VENDOR_CACHE = {}
+
+# Diretório de configurações para carregar/salvar o banco de dados OUI completo
+CONFIG_DIR = os.path.expanduser("~/.config/net-scanner")
+OUI_FILE_PATH = os.path.join(CONFIG_DIR, "oui.json")
+
+# Banco de dados básico de OUI para fallback se estiver sem internet no primeiro uso
+LOCAL_OUI_DB = {
+    "6c999d": "Amazon Technologies",
+    "a88055": "Tuya Smart Inc.",
+    "808544": "Tuya Smart Inc.",
+    "d8c80c": "Tuya Smart Inc.",
+    "508b96": "Huawei Device Co.",
+    "c07982": "TCL King Electrical",
+    "503d93": "Samsung Electronics",
+    "8ef1b1": "Espressif Inc.",
+    "a020a6": "Espressif Inc.",
+    "240ac4": "Espressif Inc.",
+    "3c5ab4": "Google LLC",
+    "001c42": "Parallels / Apple",
+    "002500": "Apple Inc.",
+    "b827eb": "Raspberry Pi Foundation",
+    "dca632": "Raspberry Pi Foundation",
+    "e45f01": "Raspberry Pi Foundation",
+    "982a0a": "Tuya Smart Inc.",
+    "503dd1": "Intel Corporation",
+    "e26faf": "Dispositivo Móvel (MAC Rotativo)",
+}
+
+def load_oui_database():
+    """Tenta carregar o banco de dados OUI completo da IEEE. Se não existir, baixa em segundo plano."""
+    if os.path.exists(OUI_FILE_PATH):
+        try:
+            with open(OUI_FILE_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+            
+    # Se não existir, tenta baixar a base oficial da IEEE (cobre todos os fabricantes do mundo)
     try:
-        oui = mac.replace(":", "")[:6]
+        os.makedirs(CONFIG_DIR, exist_ok=True)
+        url = "https://standards-oui.ieee.org/oui/oui.txt"
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=5) as response:
+            content = response.read().decode('utf-8', errors='ignore')
+            
+        oui_db = {}
+        for line in content.splitlines():
+            if "(base 16)" in line:
+                parts = line.split("(base 16)")
+                if len(parts) == 2:
+                    oui_prefix = parts[0].strip().lower()
+                    company = parts[1].strip()
+                    oui_db[oui_prefix] = company
+                    
+        # Salva para uso offline subsequente
+        with open(OUI_FILE_PATH, "w", encoding="utf-8") as f:
+            json.dump(oui_db, f, indent=4, ensure_ascii=False)
+        return oui_db
+    except Exception as e:
+        print(f"Erro ao baixar banco OUI da IEEE (usando fallback): {e}")
+        
+    return LOCAL_OUI_DB
+
+def get_mac_vendor(mac):
+    """Obtém o fabricante a partir do MAC, usando banco completo da IEEE ou fallback local."""
+    mac_clean = mac.replace(":", "").lower()
+    oui = mac_clean[:6]
+    
+    # 1. Verifica no cache temporário de execução
+    if oui in VENDOR_CACHE:
+        return VENDOR_CACHE[oui]
+
+    # 2. Se for MAC aleatório/rotativo de celular (caractere 2 é 2, 6, a ou e)
+    if len(mac_clean) > 1 and mac_clean[1] in ['2', '6', 'a', 'e']:
+        vendor = "Dispositivo Privado (MAC Aleatório)"
+        VENDOR_CACHE[oui] = vendor
+        return vendor
+
+    # 3. Carrega do banco de dados completo da IEEE
+    oui_db = load_oui_database()
+    if oui in oui_db:
+        vendor = oui_db[oui]
+        VENDOR_CACHE[oui] = vendor
+        return vendor
+        
+    # 4. Fallback se não encontrar
+    try:
         url = f"https://api.macvendors.com/{oui}"
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
         with urllib.request.urlopen(req, timeout=2) as response:
-            return response.read().decode('utf-8')
+            vendor = response.read().decode('utf-8')
+            VENDOR_CACHE[oui] = vendor
+            return vendor
     except Exception:
-        return "Desconhecido"
+        pass
+
+    return "Desconhecido"
 
 def get_public_ip(ipv6=False):
-    """Consulta o IP público (IPv4 ou IPv6)."""
-    url = "https://api64.ipify.org?format=json" if ipv6 else "https://api.ipify.org?format=json"
+    """Consulta o IP público (IPv4 ou IPv6). Usa api6.ipify.org para IPv6 real."""
+    url = "https://api6.ipify.org?format=json" if ipv6 else "https://api.ipify.org?format=json"
     try:
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
         with urllib.request.urlopen(req, timeout=3) as response:
@@ -110,3 +199,25 @@ def get_public_ip(ipv6=False):
             return data.get("ip", "Não disponível")
     except Exception:
         return "Não disponível"
+
+def scan_ports(ip):
+    """Realiza uma varredura rápida nas portas comuns de um IP."""
+    common_ports = {
+        21: "FTP",
+        22: "SSH",
+        23: "Telnet",
+        80: "HTTP",
+        443: "HTTPS",
+        445: "SMB",
+        3389: "RDP",
+        8080: "HTTP-ALT"
+    }
+    open_ports = []
+    for port, name in common_ports.items():
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(0.1) # Timeout curto para ser rápido
+        result = s.connect_ex((ip, port))
+        if result == 0:
+            open_ports.append(f"{port} ({name})")
+        s.close()
+    return open_ports

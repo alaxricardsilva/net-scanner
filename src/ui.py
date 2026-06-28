@@ -3,7 +3,8 @@ from PySide6.QtCore import Qt, QThread, Signal, Slot, QTimer
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
     QPushButton, QTableWidget, QTableWidgetItem, QHeaderView, 
-    QInputDialog, QListWidget, QTabWidget, QMessageBox, QFrame
+    QInputDialog, QListWidget, QTabWidget, QMessageBox, QFrame,
+    QDialog
 )
 from PySide6.QtGui import QFont, QIcon, QColor
 
@@ -100,6 +101,94 @@ class PublicIPThread(QThread):
         ipv6 = scanner.get_public_ip(ipv6=True)
         self.finished_signal.emit(ipv4, ipv6)
 
+class PortScanThread(QThread):
+    finished_signal = Signal(list)
+
+    def __init__(self, ip):
+        super().__init__()
+        self.ip = ip
+
+    def run(self):
+        open_ports = scanner.scan_ports(self.ip)
+        self.finished_signal.emit(open_ports)
+
+class DeviceDetailsDialog(QDialog):
+    def __init__(self, dev_info, parent=None):
+        super().__init__(parent)
+        self.dev_info = dev_info
+        self.setWindowTitle(f"Detalhes - {dev_info['ip']}")
+        self.resize(400, 320)
+        self.init_ui()
+
+    def init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)
+
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #15161e;
+                border: 1px solid #2d3748;
+                border-radius: 8px;
+            }
+            QLabel {
+                color: #cbd5e1;
+                font-size: 10pt;
+            }
+            QPushButton {
+                background-color: #4f46e5;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #6366f1;
+            }
+        """)
+
+        title = QLabel(f"Informações Gerais:")
+        title.setFont(QFont("Outfit", 12, QFont.Bold))
+        layout.addWidget(title)
+
+        name_display = self.dev_info['custom_name'] if self.dev_info['custom_name'] else "Sem Nome Personalizado"
+        layout.addWidget(QLabel(f"<b>Nome Personalizado:</b> {name_display}"))
+        layout.addWidget(QLabel(f"<b>Endereço IP:</b> {self.dev_info['ip']}"))
+        layout.addWidget(QLabel(f"<b>Endereço MAC:</b> {self.dev_info['mac']}"))
+        layout.addWidget(QLabel(f"<b>Fabricante:</b> {self.dev_info['vendor']}"))
+
+        # Linha divisória
+        line = QFrame()
+        line.setFrameShape(QFrame.HLine)
+        line.setStyleSheet("background-color: #2d3748;")
+        layout.addWidget(line)
+
+        ports_title = QLabel("Varredura de Portas Comuns:")
+        ports_title.setFont(QFont("Outfit", 11, QFont.Bold))
+        layout.addWidget(ports_title)
+
+        self.lbl_ports = QLabel("Realizando varredura em segundo plano...")
+        self.lbl_ports.setStyleSheet("color: #94a3b8;")
+        layout.addWidget(self.lbl_ports)
+
+        btn_close = QPushButton("Fechar")
+        btn_close.clicked.connect(self.accept)
+        layout.addWidget(btn_close)
+
+        # Inicia varredura
+        self.thread = PortScanThread(self.dev_info['ip'])
+        self.thread.finished_signal.connect(self.on_scan_finished)
+        self.thread.start()
+
+    def on_scan_finished(self, open_ports):
+        if open_ports:
+            self.lbl_ports.setText("Portas Abertas Encontradas:\n" + "\n".join([f"• {p}" for p in open_ports]))
+            self.lbl_ports.setStyleSheet("color: #00e676;")
+        else:
+            self.lbl_ports.setText("Nenhuma porta comum aberta encontrada.")
+            self.lbl_ports.setStyleSheet("color: #cbd5e1;")
+
 class NetScannerWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -194,11 +283,15 @@ class NetScannerWindow(QMainWindow):
 
         # Tabela de Dispositivos
         self.table = QTableWidget(0, 5)
-        self.table.setHorizontalHeaderLabels(["IP Local", "MAC Address", "Nome do Dispositivo", "Fabricante", "Ações"])
+        self.table.setColumnCount(5)
+        self.table.setHorizontalHeaderLabels(["IP Local (Clique p/ detalhes)", "MAC Address", "Nome do Dispositivo", "Fabricante", "Ações"])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Fixed)
+        self.table.setColumnWidth(4, 120)
+        self.table.verticalHeader().setVisible(False)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.table.cellClicked.connect(self.on_cell_clicked)
         
         tab_devices_layout.addWidget(self.table)
         self.tabs.addTab(tab_devices, "Dispositivos Conectados")
@@ -381,8 +474,20 @@ class NetScannerWindow(QMainWindow):
         self.table.setRowCount(len(devices))
         
         for row, dev in enumerate(devices):
-            self.table.setItem(row, 0, QTableWidgetItem(dev["ip"]))
-            self.table.setItem(row, 1, QTableWidgetItem(dev["mac"]))
+            # Estiliza o IP como um link clicável
+            ip_item = QTableWidgetItem(dev["ip"])
+            ip_item.setForeground(QColor("#38bdf8"))
+            font = ip_item.font()
+            font.setUnderline(True)
+            font.setBold(True)
+            ip_item.setFont(font)
+            ip_item.setTextAlignment(Qt.AlignCenter)
+            self.table.setItem(row, 0, ip_item)
+            
+            # Centraliza o MAC
+            mac_item = QTableWidgetItem(dev["mac"])
+            mac_item.setTextAlignment(Qt.AlignCenter)
+            self.table.setItem(row, 1, mac_item)
             
             # Nome customizado ou vazio
             display_name = dev["custom_name"] if dev["custom_name"] else "Sem Nome Personalizado"
@@ -409,7 +514,14 @@ class NetScannerWindow(QMainWindow):
             """)
             btn_rename.clicked.connect(self.rename_device_dialog)
             
-            self.table.setCellWidget(row, 4, btn_rename)
+            # Container para centralizar o botão e evitar distorções
+            btn_container = QWidget()
+            btn_layout = QHBoxLayout(btn_container)
+            btn_layout.addWidget(btn_rename)
+            btn_layout.setAlignment(Qt.AlignCenter)
+            btn_layout.setContentsMargins(0, 0, 0, 0)
+            
+            self.table.setCellWidget(row, 4, btn_container)
             
         self.btn_scan.setEnabled(True)
         self.lbl_scan_status.setText(f"Varredura concluída! {len(devices)} dispositivos encontrados.")
@@ -441,6 +553,17 @@ class NetScannerWindow(QMainWindow):
             
             # Atualiza a propriedade do botão
             button.setProperty("current_name", new_name)
+
+    def on_cell_clicked(self, row, col):
+        # Abre o diálogo de detalhes ao clicar na coluna 0 (IP Local)
+        if col == 0:
+            self.show_device_details(row)
+
+    def show_device_details(self, row):
+        if row < len(self.devices_data):
+            dev_info = self.devices_data[row]
+            dialog = DeviceDetailsDialog(dev_info, self)
+            dialog.exec()
 
     def closeEvent(self, event):
         # Garante o encerramento correto das threads
