@@ -5,7 +5,7 @@ echo "=== Iniciando processo de compilação e empacotamento ==="
 
 # Diretórios do projeto
 PROJECT_DIR="/home/alaxricard/Documentos/Projetos/net-scanner"
-SRC_DIR="$PROJECT_DIR/src"
+SRC_DIR="$PROJECT_DIR/net_scanner_src"
 BUILD_DIR="$PROJECT_DIR/build_env"
 PKG_DIR="$PROJECT_DIR/net-scanner_1.0.0_amd64"
 

@@ -18,10 +18,10 @@ package() {
     install -d "${pkgdir}/usr/share/icons/hicolor/scalable/apps"
 
     # Instala arquivos de código diretamente da pasta original (startdir)
-    install -m644 "${startdir}/src/main.py" "${pkgdir}/usr/share/${pkgname}/main.py"
-    install -m644 "${startdir}/src/ui.py" "${pkgdir}/usr/share/${pkgname}/ui.py"
-    install -m644 "${startdir}/src/scanner.py" "${pkgdir}/usr/share/${pkgname}/scanner.py"
-    install -m644 "${startdir}/src/database.py" "${pkgdir}/usr/share/${pkgname}/database.py"
+    install -m644 "${startdir}/net_scanner_src/main.py" "${pkgdir}/usr/share/${pkgname}/main.py"
+    install -m644 "${startdir}/net_scanner_src/ui.py" "${pkgdir}/usr/share/${pkgname}/ui.py"
+    install -m644 "${startdir}/net_scanner_src/scanner.py" "${pkgdir}/usr/share/${pkgname}/scanner.py"
+    install -m644 "${startdir}/net_scanner_src/database.py" "${pkgdir}/usr/share/${pkgname}/database.py"
     install -m644 "${startdir}/resources/oui.json" "${pkgdir}/usr/share/${pkgname}/oui.json"
 
     # Cria script executável de inicialização
