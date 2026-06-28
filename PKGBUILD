@@ -6,7 +6,7 @@ pkgdesc="Scanner de rede local e monitoramento de reinicialização de roteador"
 arch=('any')
 url="https://github.com/alaxricard/net-scanner"
 license=('GPL')
-depends=('python' 'python-pyside6')
+depends=('python' 'pyside6')
 source=('net-scanner.desktop' 'net-scanner.svg' 'main.py' 'ui.py' 'scanner.py' 'database.py')
 sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
 

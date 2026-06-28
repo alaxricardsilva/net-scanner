@@ -36,7 +36,7 @@ Para rodar a aplicação a partir do código-fonte, instale o Python 3 e as bibl
   ```
 * **Em derivados do Arch Linux/Manjaro/BigLinux (Pacman)**:
   ```bash
-  sudo pacman -S python python-pip python-pyside6
+  sudo pacman -S python python-pip pyside6
   ```
 
 ---
