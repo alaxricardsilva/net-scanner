@@ -18,16 +18,42 @@ source "$BUILD_DIR/bin/activate"
 pip install --upgrade pip
 pip install PySide6 pyinstaller
 
-# 2. Compilando com PyInstaller
-echo "[2/5] Compilando aplicativo com PyInstaller..."
-cd "$PROJECT_DIR"
-pyinstaller --onefile --windowed --name=net-scanner "$SRC_DIR/main.py"
+# 2. Gerando banco de dados de fabricantes offline (IEEE OUI)
+echo "[2/6] Baixando e estruturando base de dados OUI completa..."
+python3 -c "
+import urllib.request, json, os
+try:
+    url = 'https://raw.githubusercontent.com/Ringmast4r/OUI-Master-Database/master/LISTS/master_oui.json'
+    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+    print('Fazendo download da base unificada (Ringmast4r OUI)...')
+    with urllib.request.urlopen(req, timeout=40) as r:
+        data = json.loads(r.read().decode('utf-8'))
+    
+    oui_db = {}
+    for prefix, info in data.items():
+        manufacturer = info.get('manufacturer')
+        if manufacturer:
+            oui_db[prefix.lower()] = manufacturer
+            
+    os.makedirs('resources', exist_ok=True)
+    with open('resources/oui.json', 'w', encoding='utf-8') as f:
+        json.dump(oui_db, f, indent=4, ensure_ascii=False)
+    print(f'Sucesso! Banco OUI gerado com {len(oui_db)} fabricantes.')
+except Exception as e:
+    print('Erro ao gerar base OUI durante o build:', e)
+"
 
-# 3. Criando estrutura do pacote Debian
-echo "[3/5] Estruturando diretórios do pacote .deb..."
+# 3. Compilando com PyInstaller (incluindo o oui.json embutido)
+echo "[3/6] Compilando aplicativo com PyInstaller..."
+cd "$PROJECT_DIR"
+pyinstaller --onefile --windowed --add-data "resources/oui.json:." --name=net-scanner "$SRC_DIR/main.py"
+
+# 4. Criando estrutura do pacote Debian
+echo "[4/6] Estruturando diretórios do pacote .deb..."
 rm -rf "$PKG_DIR"
 mkdir -p "$PKG_DIR/DEBIAN"
 mkdir -p "$PKG_DIR/usr/bin"
+mkdir -p "$PKG_DIR/usr/share/net-scanner"
 mkdir -p "$PKG_DIR/usr/share/applications"
 mkdir -p "$PKG_DIR/usr/share/icons/hicolor/scalable/apps"
 
@@ -35,8 +61,9 @@ mkdir -p "$PKG_DIR/usr/share/icons/hicolor/scalable/apps"
 cp "$PROJECT_DIR/dist/net-scanner" "$PKG_DIR/usr/bin/"
 chmod +x "$PKG_DIR/usr/bin/net-scanner"
 
-# Copiar ícone SVG
+# Copiar ícone SVG e o oui.json
 cp "$PROJECT_DIR/resources/net-scanner.svg" "$PKG_DIR/usr/share/icons/hicolor/scalable/apps/"
+cp "$PROJECT_DIR/resources/oui.json" "$PKG_DIR/usr/share/net-scanner/oui.json"
 
 # Criar arquivo control para o Debian
 cat <<EOT > "$PKG_DIR/DEBIAN/control"
@@ -64,8 +91,8 @@ Terminal=false
 Categories=Utility;Network;
 EOT
 
-# 4. Construindo o pacote Debian (.deb) usando Python (portável)
-echo "[4/5] Construindo arquivo .deb..."
+# 5. Construindo o pacote Debian (.deb) usando Python (portável)
+echo "[5/6] Construindo arquivo .deb..."
 python3 -c "
 import os, tarfile
 
@@ -121,8 +148,8 @@ for temp in ['control.tar.gz', 'data.tar.xz', 'debian-binary']:
         os.remove(temp)
 "
 
-# 5. Criando a atalho de Menu Iniciar para o usuário atual (local)
-echo "[5/5] Instalando atalho no menu iniciar do usuário atual..."
+# 6. Criando a atalho de Menu Iniciar para o usuário atual (local)
+echo "[6/6] Instalando atalho no menu iniciar do usuário atual..."
 mkdir -p ~/.local/share/applications/
 mkdir -p ~/.local/share/icons/hicolor/scalable/apps/
 cp "$PROJECT_DIR/resources/net-scanner.svg" ~/.local/share/icons/hicolor/scalable/apps/

@@ -43,9 +43,29 @@ def get_default_gateway():
     return None
 
 def ping_ip(ip):
-    """Executa um ping rápido em um IP."""
+    """Tenta forçar a resolução ARP enviando pacotes dummy UDP/TCP e pingando."""
+    # 1. Envia pacotes UDP dummy (mDNS 5353 e NetBIOS 137) para forçar resolução ARP no kernel
     try:
-        # -c 1 (1 pacote), -W 1 (timeout de 1 segundo)
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0.05)
+        # Envia para mDNS e NetBIOS
+        s.sendto(b'', (ip, 5353))
+        s.sendto(b'', (ip, 137))
+        s.close()
+    except Exception:
+        pass
+
+    # 2. Tenta uma conexão TCP rápida na porta 80 (HTTP)
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(0.05)
+        s.connect_ex((ip, 80))
+        s.close()
+    except Exception:
+        pass
+
+    # 3. Executa o ping ICMP tradicional
+    try:
         res = subprocess.run(["ping", "-c", "1", "-W", "1", ip], 
                              stdout=subprocess.DEVNULL, 
                              stderr=subprocess.DEVNULL)
@@ -100,7 +120,7 @@ OUI_FILE_PATH = os.path.join(CONFIG_DIR, "oui.json")
 LOCAL_OUI_DB = {
     "6c999d": "Amazon Technologies",
     "a88055": "Tuya Smart Inc.",
-    "808544": "Tuya Smart Inc.",
+    "808544": "Intelbras",
     "d8c80c": "Tuya Smart Inc.",
     "508b96": "Huawei Device Co.",
     "c07982": "TCL King Electrical",
@@ -114,26 +134,47 @@ LOCAL_OUI_DB = {
     "b827eb": "Raspberry Pi Foundation",
     "dca632": "Raspberry Pi Foundation",
     "e45f01": "Raspberry Pi Foundation",
-    "982a0a": "Tuya Smart Inc.",
+    "982a0a": "Desconhecido",
     "503dd1": "Intel Corporation",
     "e26faf": "Dispositivo Móvel (MAC Rotativo)",
 }
 
 def load_oui_database():
-    """Tenta carregar o banco de dados OUI completo da IEEE. Se não existir, baixa em segundo plano."""
+    """Tenta carregar o banco de dados OUI completo da IEEE a partir de fontes locais ou remotas."""
+    # 1. Tenta carregar da pasta de configurações do usuário
     if os.path.exists(OUI_FILE_PATH):
         try:
             with open(OUI_FILE_PATH, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception:
             pass
+
+    # 2. Tenta carregar do diretório do script / instalação
+    import sys
+    sys_path = os.path.join(os.path.dirname(__file__), "oui.json")
+    if os.path.exists(sys_path):
+        try:
+            with open(sys_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+
+    # 3. Tenta carregar da pasta temporária do PyInstaller
+    if hasattr(sys, "_MEIPASS"):
+        meipass_path = os.path.join(sys._MEIPASS, "oui.json")
+        if os.path.exists(meipass_path):
+            try:
+                with open(meipass_path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                pass
             
-    # Se não existir, tenta baixar a base oficial da IEEE (cobre todos os fabricantes do mundo)
+    # 4. Se não existir localmente, tenta baixar a base oficial da IEEE
     try:
         os.makedirs(CONFIG_DIR, exist_ok=True)
         url = "https://standards-oui.ieee.org/oui/oui.txt"
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=5) as response:
+        with urllib.request.urlopen(req, timeout=20) as response:
             content = response.read().decode('utf-8', errors='ignore')
             
         oui_db = {}
@@ -215,7 +256,7 @@ def scan_ports(ip):
     open_ports = []
     for port, name in common_ports.items():
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(0.1) # Timeout curto para ser rápido
+        s.settimeout(0.3) # Aumentado para 0.3 para maior confiabilidade
         result = s.connect_ex((ip, port))
         if result == 0:
             open_ports.append(f"{port} ({name})")

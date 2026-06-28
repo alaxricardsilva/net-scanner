@@ -30,6 +30,10 @@ class ScanThread(QThread):
         
         # Cria lista com os resultados da tabela ARP
         for ip, mac in arp_devices.items():
+            # Filtra apenas IPs que pertencem à sub-rede local ativa
+            if not ip.startswith(self.subnet_prefix):
+                continue
+                
             mac_lower = mac.lower()
             custom_name = custom_names.get(mac_lower, "")
             vendor = scanner.get_mac_vendor(mac)
@@ -41,6 +45,14 @@ class ScanThread(QThread):
                 "status": "Online"
             })
             
+        # Ordena a lista de dispositivos de forma numérica pelo endereço IP
+        def ip_key(device):
+            try:
+                return [int(num) for num in device["ip"].split(".") if num.isdigit()]
+            except Exception:
+                return [0, 0, 0, 0]
+                
+        devices_list.sort(key=ip_key)
         self.finished_signal.emit(devices_list)
 
 class RouterMonitorThread(QThread):
@@ -504,13 +516,24 @@ class NetScannerWindow(QMainWindow):
             btn_rename.setProperty("current_name", dev["custom_name"])
             btn_rename.setProperty("row", row)
             btn_rename.setObjectName("RenameButton")
-            btn_rename.setProperty("class", "rename-btn")
+            btn_rename.setFixedSize(90, 24)
             btn_rename.setStyleSheet("""
-                background-color: #27272a;
-                color: #38bdf8;
-                border: 1px solid #3f3f46;
-                padding: 4px 8px;
-                border-radius: 4px;
+                QPushButton {
+                    background-color: #27272a;
+                    color: #38bdf8;
+                    border: 1px solid #3f3f46;
+                    padding: 2px 4px;
+                    border-radius: 4px;
+                    font-size: 9pt;
+                    font-weight: normal;
+                }
+                QPushButton:hover {
+                    background-color: #3f3f46;
+                    color: #7dd3fc;
+                }
+                QPushButton:pressed {
+                    background-color: #18181b;
+                }
             """)
             btn_rename.clicked.connect(self.rename_device_dialog)
             

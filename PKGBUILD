@@ -22,6 +22,7 @@ package() {
     install -m644 "${startdir}/src/ui.py" "${pkgdir}/usr/share/${pkgname}/ui.py"
     install -m644 "${startdir}/src/scanner.py" "${pkgdir}/usr/share/${pkgname}/scanner.py"
     install -m644 "${startdir}/src/database.py" "${pkgdir}/usr/share/${pkgname}/database.py"
+    install -m644 "${startdir}/resources/oui.json" "${pkgdir}/usr/share/${pkgname}/oui.json"
 
     # Cria script executável de inicialização
     echo "#!/bin/sh" > "${pkgdir}/usr/bin/net-scanner"
