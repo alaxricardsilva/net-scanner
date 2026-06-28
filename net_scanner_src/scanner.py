@@ -162,7 +162,21 @@ def load_oui_database():
         except Exception:
             pass
 
-    # 3. Tenta carregar da pasta de configurações do usuário
+    # 3. Tenta carregar da pasta resources/ do projeto (quando rodando pelo Python direto)
+    project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    for candidate in [
+        os.path.join(project_dir, "resources", "oui.json"),
+        os.path.join(project_dir, "oui.json"),
+        "/usr/share/net-scanner/oui.json",
+    ]:
+        if os.path.exists(candidate):
+            try:
+                with open(candidate, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                pass
+
+    # 4. Tenta carregar da pasta de configurações do usuário
     if os.path.exists(OUI_FILE_PATH):
         try:
             with open(OUI_FILE_PATH, "r", encoding="utf-8") as f:
@@ -211,18 +225,28 @@ def get_mac_vendor(mac):
         VENDOR_CACHE[oui] = vendor
         return vendor
 
-    # 3. Carrega do banco de dados completo e busca por prefixos de tamanho decrescente (MA-S, MA-M, MA-L)
+    # 3. Carrega banco e busca em múltiplos formatos de chave (com e sem dois-pontos)
     oui_db = load_oui_database()
-    for length in [9, 8, 7, 6]:
-        prefix = mac_clean[:length]
-        if prefix in oui_db:
-            vendor = oui_db[prefix]
-            VENDOR_CACHE[oui] = vendor
-            return vendor
+    
+    # Gera prefixo com dois-pontos: "6c:99:9d" (formato usado pelo Ringmast4r)
+    def to_colon(hex_str):
+        return ":".join(hex_str[i:i+2] for i in range(0, len(hex_str), 2))
+    
+    # Tenta prefixos de tamanho decrescente: 6, 7, 8, 9 dígitos hex (MA-L, MA-M, MA-S)
+    for hex_len in [6, 7, 8, 9]:
+        prefix_plain = mac_clean[:hex_len]
+        prefix_colon = to_colon(prefix_plain)
+        # Busca tanto no formato com dois-pontos quanto sem
+        for key in [prefix_colon, prefix_plain, prefix_colon.upper()]:
+            if key in oui_db:
+                vendor = oui_db[key]
+                VENDOR_CACHE[oui] = vendor
+                return vendor
         
-    # 4. Fallback se não encontrar (API online)
+    # 4. Fallback via API online
     try:
-        url = f"https://api.macvendors.com/{oui}"
+        oui_fmt = ":".join(mac_clean[i:i+2] for i in range(0, 6, 2)).upper()
+        url = f"https://api.macvendors.com/{oui_fmt}"
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
         with urllib.request.urlopen(req, timeout=2) as response:
             vendor = response.read().decode('utf-8')
