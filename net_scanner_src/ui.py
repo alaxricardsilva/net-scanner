@@ -14,9 +14,10 @@ import scanner
 class ScanThread(QThread):
     finished_signal = Signal(list)
 
-    def __init__(self, subnet_prefix):
+    def __init__(self, subnet_prefix, local_ip):
         super().__init__()
         self.subnet_prefix = subnet_prefix
+        self.local_ip = local_ip
 
     def run(self):
         # Escaneia a rede local pingando todos os IPs
@@ -45,6 +46,25 @@ class ScanThread(QThread):
                 "status": "Online"
             })
             
+        # Adiciona a própria máquina se ela não estiver na lista (ela não aparece no ARP local)
+        has_self = any(dev["ip"] == self.local_ip for dev in devices_list)
+        if not has_self and self.local_ip and self.local_ip != "127.0.0.1":
+            import uuid
+            try:
+                mac_num = uuid.getnode()
+                mac_hex = f"{mac_num:012x}"
+                local_mac = ":".join(mac_hex[i:i+2] for i in range(0, 12, 2))
+                
+                devices_list.append({
+                    "ip": self.local_ip,
+                    "mac": local_mac,
+                    "custom_name": custom_names.get(local_mac.lower(), "Minha Máquina (Este PC)"),
+                    "vendor": scanner.get_mac_vendor(local_mac),
+                    "status": "Online"
+                })
+            except Exception:
+                pass
+
         # Ordena a lista de dispositivos de forma numérica pelo endereço IP
         def ip_key(device):
             try:
@@ -129,7 +149,7 @@ class DeviceDetailsDialog(QDialog):
         super().__init__(parent)
         self.dev_info = dev_info
         self.setWindowTitle(f"Detalhes - {dev_info['ip']}")
-        self.resize(400, 320)
+        self.resize(400, 380)
         self.init_ui()
 
     def init_ui(self):
@@ -166,7 +186,13 @@ class DeviceDetailsDialog(QDialog):
 
         name_display = self.dev_info['custom_name'] if self.dev_info['custom_name'] else "Sem Nome Personalizado"
         layout.addWidget(QLabel(f"<b>Nome Personalizado:</b> {name_display}"))
-        layout.addWidget(QLabel(f"<b>Endereço IP:</b> {self.dev_info['ip']}"))
+        layout.addWidget(QLabel(f"<b>Endereço IP Local:</b> {self.dev_info['ip']}"))
+        
+        # Busca e exibe o IPv6 do dispositivo
+        ipv6s = scanner.get_local_ipv6(self.dev_info['mac'])
+        layout.addWidget(QLabel(f"<b>IPv6 Link-Local:</b> {ipv6s['link_local']}"))
+        layout.addWidget(QLabel(f"<b>IPv6 Global (Público):</b> {ipv6s['global']}"))
+        
         layout.addWidget(QLabel(f"<b>Endereço MAC:</b> {self.dev_info['mac']}"))
         layout.addWidget(QLabel(f"<b>Fabricante:</b> {self.dev_info['vendor']}"))
 
@@ -300,7 +326,11 @@ class NetScannerWindow(QMainWindow):
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Fixed)
         self.table.setColumnWidth(4, 120)
+        
+        # Define altura da linha como 35px e oculta os números das linhas
+        self.table.verticalHeader().setDefaultSectionSize(35)
         self.table.verticalHeader().setVisible(False)
+        
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.cellClicked.connect(self.on_cell_clicked)
@@ -458,6 +488,18 @@ class NetScannerWindow(QMainWindow):
         database.add_router_restart_log(ip, mac, time_str)
         self.refresh_history_list()
         
+        # Dispara notificação nativa para a área de trabalho
+        import subprocess
+        try:
+            subprocess.run([
+                "notify-send", 
+                "NetScanner - Alerta de Rede", 
+                f"O roteador principal ({ip}) reiniciou ou restabeleceu a conexão em {time_str}!", 
+                "-i", "network-wired"
+            ], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+        except Exception:
+            pass
+            
         # Mostra um alerta amigável na tela
         QMessageBox.warning(
             self, 

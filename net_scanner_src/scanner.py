@@ -196,7 +196,7 @@ def load_oui_database():
     return LOCAL_OUI_DB
 
 def get_mac_vendor(mac):
-    """Obtém o fabricante a partir do MAC, usando banco completo da IEEE ou fallback local."""
+    """Obtém o fabricante a partir do MAC, usando banco completo da IEEE/Ringmast4r ou fallback local."""
     mac_clean = mac.replace(":", "").lower()
     oui = mac_clean[:6]
     
@@ -210,14 +210,16 @@ def get_mac_vendor(mac):
         VENDOR_CACHE[oui] = vendor
         return vendor
 
-    # 3. Carrega do banco de dados completo da IEEE
+    # 3. Carrega do banco de dados completo e busca por prefixos de tamanho decrescente (MA-S, MA-M, MA-L)
     oui_db = load_oui_database()
-    if oui in oui_db:
-        vendor = oui_db[oui]
-        VENDOR_CACHE[oui] = vendor
-        return vendor
+    for length in [9, 8, 7, 6]:
+        prefix = mac_clean[:length]
+        if prefix in oui_db:
+            vendor = oui_db[prefix]
+            VENDOR_CACHE[oui] = vendor
+            return vendor
         
-    # 4. Fallback se não encontrar
+    # 4. Fallback se não encontrar (API online)
     try:
         url = f"https://api.macvendors.com/{oui}"
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
@@ -240,6 +242,27 @@ def get_public_ip(ipv6=False):
             return data.get("ip", "Não disponível")
     except Exception:
         return "Não disponível"
+
+def get_local_ipv6(mac):
+    """Obtém os endereços IPv6 (Link-Local e Global/Público) associados ao MAC na rede local."""
+    ipv6s = {"link_local": "Não detectado", "global": "Não detectado"}
+    try:
+        out = subprocess.check_output(["ip", "-6", "neighbor", "show"], text=True)
+        for line in out.splitlines():
+            parts = line.strip().split()
+            if "lladdr" in parts:
+                idx = parts.index("lladdr")
+                if idx + 1 < len(parts):
+                    line_mac = parts[idx + 1].lower()
+                    if line_mac == mac.lower():
+                        ip = parts[0]
+                        if ip.lower().startswith("fe80"):
+                            ipv6s["link_local"] = ip
+                        else:
+                            ipv6s["global"] = ip
+    except Exception:
+        pass
+    return ipv6s
 
 def scan_ports(ip):
     """Realiza uma varredura rápida nas portas comuns de um IP."""
